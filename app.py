@@ -1,9 +1,13 @@
-from flask import Flask, render_template, request, redirect, url_for
+import os
+from flask import Flask, render_template, request, redirect, url_for, flash
+from werkzeug.security import generate_password_hash, check_password_hash
 import database
 
 app = Flask(__name__)
 
-# Garante que a tabela existe e inicializa os dados de exemplo no startup
+# 1. SECRET_KEY protegida (Usa variável de ambiente ou chave aleatória dinâmica de 24 bytes)
+app.secret_key = os.environ.get('SECRET_KEY', os.urandom(24))
+
 database.criar_tabela()
 database.popular_dados_exemplo()
 
@@ -24,24 +28,42 @@ def calcular_indicadores(maquina):
     }
 
 
-def ler_formulario(form):
-    """Converte os dados do formulário HTML em um dicionário pronto
-    para salvar no banco."""
+def ler_e_validar_formulario(form):
+    """Sanitiza e valida rigorosamente as entradas do formulário."""
+    nome = form.get("nome", "").strip()
+    tipo = form.get("tipo", "").strip()
+
+    # Validação de campos obrigatórios vazios
+    if not nome or not tipo:
+        raise ValueError("Os campos Nome e Tipo da máquina são obrigatórios.")
+
+    try:
+        horimetro_atual = float(form.get("horimetro_atual", 0))
+        consumo_diesel = float(form.get("consumo_diesel_litros_hora", 0))
+        custo_diesel = float(form.get("custo_diesel_litro", 0))
+        ultima_manutencao = float(form.get("ultima_manutencao_horimetro", 0))
+        intervalo_manutencao = float(form.get("intervalo_manutencao_horas", 0))
+    except (ValueError, TypeError):
+        raise ValueError("Todos os campos numéricos devem conter valores válidos.")
+
+    # Proteção contra valores negativos
+    if any(val < 0 for val in [horimetro_atual, consumo_diesel, custo_diesel, ultima_manutencao, intervalo_manutencao]):
+        raise ValueError("Valores numéricos não podem ser negativos.")
+
     return {
-        "nome": form["nome"],
-        "tipo": form["tipo"],
-        "horimetro_atual": float(form["horimetro_atual"]),
-        "consumo_diesel_litros_hora": float(form["consumo_diesel_litros_hora"]),
-        "custo_diesel_litro": float(form["custo_diesel_litro"]),
-        "ultima_manutencao_horimetro": float(form["ultima_manutencao_horimetro"]),
-        "intervalo_manutencao_horas": float(form["intervalo_manutencao_horas"]),
+        "nome": nome,
+        "tipo": tipo,
+        "horimetro_atual": horimetro_atual,
+        "consumo_diesel_litros_hora": consumo_diesel,
+        "custo_diesel_litro": custo_diesel,
+        "ultima_manutencao_horimetro": ultima_manutencao,
+        "intervalo_manutencao_horas": intervalo_manutencao,
     }
 
 
 @app.route('/')
 def index():
     maquinas_calc = [calcular_indicadores(m) for m in database.listar_maquinas()]
-
     total_maquinas = len(maquinas_calc)
     alertas_ativos = sum(1 for m in maquinas_calc if m["alerta_manutencao"])
     custo_medio_hora = (
@@ -61,8 +83,13 @@ def index():
 @app.route('/cadastrar', methods=['GET', 'POST'])
 def cadastrar():
     if request.method == 'POST':
-        database.inserir_maquina(ler_formulario(request.form))
-        return redirect(url_for('relatorio'))
+        try:
+            dados = ler_e_validar_formulario(request.form)
+            database.inserir_maquina(dados)
+            flash("Máquina cadastrada com sucesso!", "success")
+            return redirect(url_for('relatorio'))
+        except ValueError as e:
+            flash(f"Erro de Validação: {str(e)}", "danger")
 
     return render_template('cadastro.html')
 
@@ -75,20 +102,49 @@ def relatorio():
 
 @app.route('/editar/<int:maquina_id>', methods=['GET', 'POST'])
 def editar(maquina_id):
-    if request.method == 'POST':
-        database.atualizar_maquina(maquina_id, ler_formulario(request.form))
-        return redirect(url_for('relatorio'))
-
     maquina = database.buscar_maquina(maquina_id)
     if maquina is None:
+        flash("Máquina não encontrada.", "warning")
         return redirect(url_for('relatorio'))
+
+    if request.method == 'POST':
+        try:
+            dados = ler_e_validar_formulario(request.form)
+            database.atualizar_maquina(maquina_id, dados)
+            flash("Registro atualizado com sucesso!", "success")
+            return redirect(url_for('relatorio'))
+        except ValueError as e:
+            flash(f"Erro ao atualizar: {str(e)}", "danger")
+
     return render_template('editar.html', maquina=maquina)
 
 
 @app.route('/deletar/<int:maquina_id>', methods=['POST'])
 def deletar(maquina_id):
     database.deletar_maquina(maquina_id)
+    flash("Máquina removida com sucesso!", "success")
     return redirect(url_for('relatorio'))
+
+
+# Rota de Registro de Usuário demonstrando HASH de Senha
+@app.route('/registrar-usuario', methods=['POST'])
+def registrar_usuario():
+    usuario = request.form.get("usuario", "").strip()
+    senha = request.form.get("senha", "").strip()
+
+    if not usuario or not senha:
+        flash("Informe usuário e senha válidos.", "danger")
+        return redirect(url_for('index'))
+
+    # Gera Hash seguro da senha (PBKDF2/SHA256)
+    senha_hash = generate_password_hash(senha)
+    try:
+        database.criar_usuario(usuario, senha_hash)
+        flash("Usuário registrado com sucesso!", "success")
+    except Exception:
+        flash("Erro: Nome de usuário já cadastrado.", "danger")
+
+    return redirect(url_for('index'))
 
 
 if __name__ == '__main__':
