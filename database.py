@@ -1,6 +1,6 @@
 import sqlite3
 
-DB_NOME = "agrotrack.db"
+DB_NOME = "agroPulse.db"
 
 
 def get_conexao():
