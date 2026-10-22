@@ -4,11 +4,11 @@ DB_NOME = "agroPulse.db"
 
 def get_conexao():
     conexao = sqlite3.connect(DB_NOME)
-    conexao.row_factory = sqlite3.Row
+    conexao.row_factory = sqlite3.Row  # Permite acessar colunas pelo nome
     return conexao
 
 def criar_tabela():
-    """Cria as tabelas de máquinas e de usuários para o sistema."""
+    """Cria as tabelas de máquinas e de usuários (com níveis de acesso)."""
     conexao = get_conexao()
     
     # Tabela do CRUD Principal de Máquinas
@@ -25,19 +25,20 @@ def criar_tabela():
         )
     """)
     
-    # Tabela de Usuários para login com Hash de Senha
+    # Tabela de Usuários para login com Hash de Senha e Nível de Acesso
     conexao.execute("""
         CREATE TABLE IF NOT EXISTS usuarios (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             usuario TEXT UNIQUE NOT NULL,
-            senha_hash TEXT NOT NULL
+            senha_hash TEXT NOT NULL,
+            nivel_acesso TEXT DEFAULT 'operador'
         )
     """)
     conexao.commit()
     conexao.close()
 
 def popular_dados_exemplo():
-    """Popula o banco com um registro inicial de exemplo caso esteja vazio."""
+    """Popula o banco com registro inicial caso esteja vazio."""
     conexao = get_conexao()
     cursor = conexao.cursor()
     cursor.execute("SELECT COUNT(*) FROM maquinas")
@@ -97,9 +98,12 @@ def deletar_maquina(maquina_id):
     conexao.close()
 
 # --- OPERAÇÕES DE USUÁRIOS E AUTENTICAÇÃO (Anti-SQL Injection) ---
-def criar_usuario(usuario, senha_hash):
+def criar_usuario(usuario, senha_hash, nivel_acesso='operador'):
     conexao = get_conexao()
-    conexao.execute("INSERT INTO usuarios (usuario, senha_hash) VALUES (?, ?)", (usuario, senha_hash))
+    conexao.execute("""
+        INSERT INTO usuarios (usuario, senha_hash, nivel_acesso) 
+        VALUES (?, ?, ?)
+    """, (usuario, senha_hash, nivel_acesso))
     conexao.commit()
     conexao.close()
 

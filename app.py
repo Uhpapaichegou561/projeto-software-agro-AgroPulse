@@ -1,4 +1,5 @@
 import os
+import logging
 from functools import wraps
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -6,22 +7,49 @@ import database
 
 app = Flask(__name__)
 
-# 1. Configuração da SECRET_KEY protegida (necessária para sessões e flash messages)
+# 1. Configuração da SECRET_KEY protegida (Gerenciamento de Sessão)
 app.secret_key = os.environ.get('SECRET_KEY', os.urandom(24))
+
+# 2. Configuração do Sistema de Logs e Auditoria (Segurança da Informação)
+logging.basicConfig(
+    filename='auditoria_agropulse.log',
+    level=logging.INFO,
+    format='%(asctime)s - [%(levelname)s] - Usuário: %(user)s - Ação: %(message)s'
+)
+
+def registrar_log(mensagem):
+    user_atual = session.get('usuario_nome', 'Anônimo/Visitante')
+    logging.info(mensagem, extra={'user': user_atual})
 
 database.criar_tabela()
 database.popular_dados_exemplo()
 
-# Decorador de Proteção de Rotas (Exige Login)
+# --- DECORADORES DE SEGURANÇA E AUTORIZAÇÃO ---
+
+# Controle de Acesso Básicos (Autenticação)
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'usuario_id' not in session:
+            registrar_log("Tentativa de acesso não autenticado bloqueada")
             flash("Por favor, faça login para acessar esta página.", "warning")
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
 
+# Princípio do Menor Privilégio (Autorização Admin)
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if session.get('nivel_acesso') != 'admin':
+            registrar_log("TENTATIVA NÃO AUTORIZADA DE ACESSO ADMINISTRATIVO")
+            flash("Acesso negado: Você não possui privilégios de Administrador.", "danger")
+            return redirect(url_for('index'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+# --- FUNÇÕES DE SUPORTE E REGRAS DE NEGÓCIO ---
 
 def calcular_indicadores(maquina):
     """Calcula custo por hora e status de manutenção de uma máquina."""
@@ -38,9 +66,8 @@ def calcular_indicadores(maquina):
         "alerta_manutencao": alerta_manutencao,
     }
 
-
 def ler_e_validar_formulario(form):
-    """Sanitiza e valida rigorosamente as entradas do formulário de máquina."""
+    """Sanitiza e valida rigorosamente as entradas do formulário."""
     nome = form.get("nome", "").strip()
     tipo = form.get("tipo", "").strip()
 
@@ -54,7 +81,7 @@ def ler_e_validar_formulario(form):
         ultima_manutencao = float(form.get("ultima_manutencao_horimetro", 0))
         intervalo_manutencao = float(form.get("intervalo_manutencao_horas", 0))
     except (ValueError, TypeError):
-        raise ValueError("Todos os campos numéricos devem conter valores numéricos válidos.")
+        raise ValueError("Todos os campos numéricos devem conter valores válidos.")
 
     if any(val < 0 for val in [horimetro_atual, consumo_diesel, custo_diesel, ultima_manutencao, intervalo_manutencao]):
         raise ValueError("Valores numéricos não podem ser negativos.")
@@ -70,7 +97,7 @@ def ler_e_validar_formulario(form):
     }
 
 
-# --- ROTAS DE AUTENTICAÇÃO (LOGIN / REGISTRO / LOGOUT) ---
+# --- ROTAS DE AUTENTICAÇÃO E SESSÃO ---
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -84,13 +111,16 @@ def login():
 
         user = database.buscar_usuario_por_nome(usuario_input)
 
-        # Valida usuário e checa a senha contra o Hash gravado
         if user and check_password_hash(user['senha_hash'], senha_input):
             session['usuario_id'] = user['id']
             session['usuario_nome'] = user['usuario']
+            session['nivel_acesso'] = user.get('nivel_acesso', 'operador')
+
+            registrar_log("Autenticação realizada com sucesso")
             flash(f"Bem-vindo(a), {user['usuario']}!", "success")
             return redirect(url_for('index'))
         else:
+            registrar_log(f"Falha de autenticação para o usuário: {usuario_input}")
             flash("Usuário ou senha incorretos.", "danger")
 
     return render_template('login.html')
@@ -101,6 +131,7 @@ def registro():
     if request.method == 'POST':
         usuario_input = request.form.get("usuario", "").strip()
         senha_input = request.form.get("senha", "").strip()
+        nivel_input = request.form.get("nivel_acesso", "operador").strip()
 
         if not usuario_input or not senha_input:
             flash("Preencha o nome de usuário e a senha.", "danger")
@@ -110,11 +141,12 @@ def registro():
             flash("A senha deve conter no mínimo 6 caracteres.", "warning")
             return render_template('registro.html')
 
-        # Criação segura com Hash (PBKDF2/SHA256)
+        # Criptografia de Senha com Hash seguro
         senha_hash = generate_password_hash(senha_input)
 
         try:
-            database.criar_usuario(usuario_input, senha_hash)
+            database.criar_usuario(usuario_input, senha_hash, nivel_input)
+            registrar_log(f"Novo usuário cadastrado no sistema (Perfil: {nivel_input})")
             flash("Conta criada com sucesso! Faça login para continuar.", "success")
             return redirect(url_for('login'))
         except Exception:
@@ -125,12 +157,13 @@ def registro():
 
 @app.route('/logout')
 def logout():
+    registrar_log("Sessão encerrada pelo usuário")
     session.clear()
     flash("Sua sessão foi encerrada.", "info")
     return redirect(url_for('login'))
 
 
-# --- ROTAS PROTEGIDAS DO SISTEMA ---
+# --- ROTAS DO CRUD E DASHBOARD (PROTEGIDAS) ---
 
 @app.route('/')
 @login_required
@@ -159,6 +192,7 @@ def cadastrar():
         try:
             dados = ler_e_validar_formulario(request.form)
             database.inserir_maquina(dados)
+            registrar_log(f"Máquina registrada: {dados['nome']}")
             flash("Máquina cadastrada com sucesso!", "success")
             return redirect(url_for('relatorio'))
         except ValueError as e:
@@ -186,6 +220,7 @@ def editar(maquina_id):
         try:
             dados = ler_e_validar_formulario(request.form)
             database.atualizar_maquina(maquina_id, dados)
+            registrar_log(f"Máquina ID {maquina_id} atualizada")
             flash("Registro atualizado com sucesso!", "success")
             return redirect(url_for('relatorio'))
         except ValueError as e:
@@ -196,8 +231,10 @@ def editar(maquina_id):
 
 @app.route('/deletar/<int:maquina_id>', methods=['POST'])
 @login_required
+@admin_required  # Apenas utilizadores com nível Admin podem deletar
 def deletar(maquina_id):
     database.deletar_maquina(maquina_id)
+    registrar_log(f"MÁQUINA EXCLUÍDA - ID: {maquina_id}")
     flash("Máquina removida com sucesso!", "success")
     return redirect(url_for('relatorio'))
 
