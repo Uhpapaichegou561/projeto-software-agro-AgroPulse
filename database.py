@@ -4,12 +4,13 @@ DB_NOME = "agroPulse.db"
 
 def get_conexao():
     conexao = sqlite3.connect(DB_NOME)
-    conexao.row_factory = sqlite3.Row
+    conexao.row_factory = sqlite3.Row  # Permite acessar colunas pelo nome
     return conexao
 
 def criar_tabela():
+    """Cria as tabelas de máquinas e de usuários para o sistema."""
     conexao = get_conexao()
-    # Tabela de Máquinas
+    # Tabela do CRUD Principal
     conexao.execute("""
         CREATE TABLE IF NOT EXISTS maquinas (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -22,7 +23,7 @@ def criar_tabela():
             intervalo_manutencao_horas REAL NOT NULL
         )
     """)
-    # Tabela de Usuários para autenticação segura com Hash
+    # Tabela de Usuários para autenticação segura com Hash de Senha
     conexao.execute("""
         CREATE TABLE IF NOT EXISTS usuarios (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -34,6 +35,7 @@ def criar_tabela():
     conexao.close()
 
 def popular_dados_exemplo():
+    """Popula o banco com um registro inicial de exemplo caso esteja vazio."""
     conexao = get_conexao()
     cursor = conexao.cursor()
     cursor.execute("SELECT COUNT(*) FROM maquinas")
@@ -91,15 +93,9 @@ def deletar_maquina(maquina_id):
     conexao.commit()
     conexao.close()
 
-# Funções de Usuário com Segurança contra SQL Injection
+# Segurança: Cadastro de Usuário com Hash
 def criar_usuario(usuario, senha_hash):
     conexao = get_conexao()
     conexao.execute("INSERT INTO usuarios (usuario, senha_hash) VALUES (?, ?)", (usuario, senha_hash))
     conexao.commit()
     conexao.close()
-
-def buscar_usuario(usuario):
-    conexao = get_conexao()
-    user = conexao.execute("SELECT * FROM usuarios WHERE usuario = ?", (usuario,)).fetchone()
-    conexao.close()
-    return dict(user) if user else None

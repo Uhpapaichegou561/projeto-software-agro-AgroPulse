@@ -1,11 +1,11 @@
 import os
 from flask import Flask, render_template, request, redirect, url_for, flash
-from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.security import generate_password_hash
 import database
 
 app = Flask(__name__)
 
-# 1. SECRET_KEY protegida (Usa variável de ambiente ou chave aleatória dinâmica de 24 bytes)
+# 1. Segurança: SECRET_KEY protegida contra vulnerabilidades de sessão
 app.secret_key = os.environ.get('SECRET_KEY', os.urandom(24))
 
 database.criar_tabela()
@@ -33,7 +33,6 @@ def ler_e_validar_formulario(form):
     nome = form.get("nome", "").strip()
     tipo = form.get("tipo", "").strip()
 
-    # Validação de campos obrigatórios vazios
     if not nome or not tipo:
         raise ValueError("Os campos Nome e Tipo da máquina são obrigatórios.")
 
@@ -44,9 +43,8 @@ def ler_e_validar_formulario(form):
         ultima_manutencao = float(form.get("ultima_manutencao_horimetro", 0))
         intervalo_manutencao = float(form.get("intervalo_manutencao_horas", 0))
     except (ValueError, TypeError):
-        raise ValueError("Todos os campos numéricos devem conter valores válidos.")
+        raise ValueError("Todos os campos numéricos devem conter valores numéricos válidos.")
 
-    # Proteção contra valores negativos
     if any(val < 0 for val in [horimetro_atual, consumo_diesel, custo_diesel, ultima_manutencao, intervalo_manutencao]):
         raise ValueError("Valores numéricos não podem ser negativos.")
 
@@ -126,23 +124,22 @@ def deletar(maquina_id):
     return redirect(url_for('relatorio'))
 
 
-# Rota de Registro de Usuário demonstrando HASH de Senha
+# Rota que demonstra a geração de Hash de Senha segura
 @app.route('/registrar-usuario', methods=['POST'])
 def registrar_usuario():
     usuario = request.form.get("usuario", "").strip()
     senha = request.form.get("senha", "").strip()
 
     if not usuario or not senha:
-        flash("Informe usuário e senha válidos.", "danger")
+        flash("Usuário e senha são obrigatórios.", "danger")
         return redirect(url_for('index'))
 
-    # Gera Hash seguro da senha (PBKDF2/SHA256)
     senha_hash = generate_password_hash(senha)
     try:
         database.criar_usuario(usuario, senha_hash)
-        flash("Usuário registrado com sucesso!", "success")
+        flash("Usuário cadastrado com hash seguro!", "success")
     except Exception:
-        flash("Erro: Nome de usuário já cadastrado.", "danger")
+        flash("Erro: Usuário já existe.", "danger")
 
     return redirect(url_for('index'))
 
