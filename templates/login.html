@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+
+{% block title %}Login - AgroTrack{% endblock %}
+
+{% block content %}
+<div style="max-width: 400px; margin: 2rem auto; padding: 2rem; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+    <h2>Entrar no Sistema</h2>
+    <form action="{{ url_for('login') }}" method="POST">
+        <div style="margin-bottom: 1rem;">
+            <label for="usuario">Usuário:</label>
+            <input type="text" id="usuario" name="usuario" required style="width: 100%; padding: 8px; margin-top: 4px;">
+        </div>
+        <div style="margin-bottom: 1.5rem;">
+            <label for="senha">Senha:</label>
+            <input type="password" id="senha" name="senha" required style="width: 100%; padding: 8px; margin-top: 4px;">
+        </div>
+        <button type="submit" style="width: 100%; padding: 10px; background-color: #2e7d32; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;">Acessar</button>
+    </form>
+    <p style="margin-top: 1rem; text-align: center;">Não tem uma conta? <a href="{{ url_for('registro') }}">Cadastre-se</a></p>
+</div>
+{% endblock %}

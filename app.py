@@ -1,15 +1,26 @@
 import os
-from flask import Flask, render_template, request, redirect, url_for, flash
-from werkzeug.security import generate_password_hash
+from functools import wraps
+from flask import Flask, render_template, request, redirect, url_for, flash, session
+from werkzeug.security import generate_password_hash, check_password_hash
 import database
 
 app = Flask(__name__)
 
-# 1. Segurança: SECRET_KEY protegida contra vulnerabilidades de sessão
+# 1. Configuração da SECRET_KEY protegida (necessária para sessões e flash messages)
 app.secret_key = os.environ.get('SECRET_KEY', os.urandom(24))
 
 database.criar_tabela()
 database.popular_dados_exemplo()
+
+# Decorador de Proteção de Rotas (Exige Login)
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'usuario_id' not in session:
+            flash("Por favor, faça login para acessar esta página.", "warning")
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
 
 
 def calcular_indicadores(maquina):
@@ -29,7 +40,7 @@ def calcular_indicadores(maquina):
 
 
 def ler_e_validar_formulario(form):
-    """Sanitiza e valida rigorosamente as entradas do formulário."""
+    """Sanitiza e valida rigorosamente as entradas do formulário de máquina."""
     nome = form.get("nome", "").strip()
     tipo = form.get("tipo", "").strip()
 
@@ -59,7 +70,70 @@ def ler_e_validar_formulario(form):
     }
 
 
+# --- ROTAS DE AUTENTICAÇÃO (LOGIN / REGISTRO / LOGOUT) ---
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        usuario_input = request.form.get("usuario", "").strip()
+        senha_input = request.form.get("senha", "").strip()
+
+        if not usuario_input or not senha_input:
+            flash("Preencha todos os campos.", "danger")
+            return render_template('login.html')
+
+        user = database.buscar_usuario_por_nome(usuario_input)
+
+        # Valida usuário e checa a senha contra o Hash gravado
+        if user and check_password_hash(user['senha_hash'], senha_input):
+            session['usuario_id'] = user['id']
+            session['usuario_nome'] = user['usuario']
+            flash(f"Bem-vindo(a), {user['usuario']}!", "success")
+            return redirect(url_for('index'))
+        else:
+            flash("Usuário ou senha incorretos.", "danger")
+
+    return render_template('login.html')
+
+
+@app.route('/registro', methods=['GET', 'POST'])
+def registro():
+    if request.method == 'POST':
+        usuario_input = request.form.get("usuario", "").strip()
+        senha_input = request.form.get("senha", "").strip()
+
+        if not usuario_input or not senha_input:
+            flash("Preencha o nome de usuário e a senha.", "danger")
+            return render_template('registro.html')
+
+        if len(senha_input) < 6:
+            flash("A senha deve conter no mínimo 6 caracteres.", "warning")
+            return render_template('registro.html')
+
+        # Criação segura com Hash (PBKDF2/SHA256)
+        senha_hash = generate_password_hash(senha_input)
+
+        try:
+            database.criar_usuario(usuario_input, senha_hash)
+            flash("Conta criada com sucesso! Faça login para continuar.", "success")
+            return redirect(url_for('login'))
+        except Exception:
+            flash("Nome de usuário já está em uso.", "danger")
+
+    return render_template('registro.html')
+
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    flash("Sua sessão foi encerrada.", "info")
+    return redirect(url_for('login'))
+
+
+# --- ROTAS PROTEGIDAS DO SISTEMA ---
+
 @app.route('/')
+@login_required
 def index():
     maquinas_calc = [calcular_indicadores(m) for m in database.listar_maquinas()]
     total_maquinas = len(maquinas_calc)
@@ -79,6 +153,7 @@ def index():
 
 
 @app.route('/cadastrar', methods=['GET', 'POST'])
+@login_required
 def cadastrar():
     if request.method == 'POST':
         try:
@@ -93,12 +168,14 @@ def cadastrar():
 
 
 @app.route('/relatorio')
+@login_required
 def relatorio():
     maquinas_calc = [calcular_indicadores(m) for m in database.listar_maquinas()]
     return render_template('relatorio.html', maquinas=maquinas_calc)
 
 
 @app.route('/editar/<int:maquina_id>', methods=['GET', 'POST'])
+@login_required
 def editar(maquina_id):
     maquina = database.buscar_maquina(maquina_id)
     if maquina is None:
@@ -118,30 +195,11 @@ def editar(maquina_id):
 
 
 @app.route('/deletar/<int:maquina_id>', methods=['POST'])
+@login_required
 def deletar(maquina_id):
     database.deletar_maquina(maquina_id)
     flash("Máquina removida com sucesso!", "success")
     return redirect(url_for('relatorio'))
-
-
-# Rota que demonstra a geração de Hash de Senha segura
-@app.route('/registrar-usuario', methods=['POST'])
-def registrar_usuario():
-    usuario = request.form.get("usuario", "").strip()
-    senha = request.form.get("senha", "").strip()
-
-    if not usuario or not senha:
-        flash("Usuário e senha são obrigatórios.", "danger")
-        return redirect(url_for('index'))
-
-    senha_hash = generate_password_hash(senha)
-    try:
-        database.criar_usuario(usuario, senha_hash)
-        flash("Usuário cadastrado com hash seguro!", "success")
-    except Exception:
-        flash("Erro: Usuário já existe.", "danger")
-
-    return redirect(url_for('index'))
 
 
 if __name__ == '__main__':

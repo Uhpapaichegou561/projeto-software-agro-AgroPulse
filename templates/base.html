@@ -10,14 +10,21 @@
     <header class="topbar">
         <div class="logo">🌱 AgroTrack</div>
         <nav>
-            <a href="{{ url_for('index') }}">Dashboard</a>
-            <a href="{{ url_for('cadastrar') }}">Cadastrar Máquina</a>
-            <a href="{{ url_for('relatorio') }}">Relatório</a>
+            {% if session.get('usuario_id') %}
+                <a href="{{ url_for('index') }}">Dashboard</a>
+                <a href="{{ url_for('cadastrar') }}">Cadastrar Máquina</a>
+                <a href="{{ url_for('relatorio') }}">Relatório</a>
+                <span style="color: #fff; margin: 0 10px;">Olá, <strong>{{ session.get('usuario_nome') }}</strong></span>
+                <a href="{{ url_for('logout') }}" style="color: #ff6b6b;">Sair</a>
+            {% else %}
+                <a href="{{ url_for('login') }}">Entrar</a>
+                <a href="{{ url_for('registro') }}">Criar Conta</a>
+            {% endif %}
         </nav>
     </header>
 
     <main class="container">
-        <!-- Bloco de Feedback Visual ao Usuário (Flash Messages) -->
+        <!-- Bloco de Feedback Visual (Flash Messages) -->
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
             <div style="margin-bottom: 1.5rem;">
