@@ -10,23 +10,33 @@ app = Flask(__name__)
 # 1. Configuração da SECRET_KEY protegida (Gerenciamento de Sessão)
 app.secret_key = os.environ.get('SECRET_KEY', os.urandom(24))
 
-# 2. Configuração do Sistema de Logs e Auditoria (Segurança da Informação)
-logging.basicConfig(
-    filename='auditoria_agropulse.log',
-    level=logging.INFO,
-    format='%(asctime)s - [%(levelname)s] - Usuário: %(user)s - Ação: %(message)s'
-)
+# 2. Configuração do Logger exclusivo para a Auditoria do AgroPulse (Sem interferir no Werkzeug)
+logger = logging.getLogger("agropulse_auditoria")
+logger.setLevel(logging.INFO)
+
+file_handler = logging.FileHandler('auditoria_agropulse.log', encoding='utf-8')
+formatter = logging.Formatter('%(asctime)s - [%(levelname)s] - %(message)s')
+file_handler.setFormatter(formatter)
+
+if not logger.handlers:
+    logger.addHandler(file_handler)
 
 def registrar_log(mensagem):
-    user_atual = session.get('usuario_nome', 'Anônimo/Visitante')
-    logging.info(mensagem, extra={'user': user_atual})
+    """Grava o evento no arquivo de auditoria vinculando ao usuário da sessão."""
+    try:
+        user_atual = session.get('usuario_nome', 'Anônimo/Visitante')
+    except RuntimeError:
+        user_atual = 'Sistema/Startup'
+
+    logger.info(f"Usuário: {user_atual} | Ação: {mensagem}")
+
 
 database.criar_tabela()
 database.popular_dados_exemplo()
 
+
 # --- DECORADORES DE SEGURANÇA E AUTORIZAÇÃO ---
 
-# Controle de Acesso Básicos (Autenticação)
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -37,7 +47,6 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# Princípio do Menor Privilégio (Autorização Admin)
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -49,7 +58,7 @@ def admin_required(f):
     return decorated_function
 
 
-# --- FUNÇÕES DE SUPORTE E REGRAS DE NEGÓCIO ---
+# --- REGRAS DE NEGÓCIO E VALIDAÇÃO ---
 
 def calcular_indicadores(maquina):
     """Calcula custo por hora e status de manutenção de uma máquina."""
@@ -141,7 +150,6 @@ def registro():
             flash("A senha deve conter no mínimo 6 caracteres.", "warning")
             return render_template('registro.html')
 
-        # Criptografia de Senha com Hash seguro
         senha_hash = generate_password_hash(senha_input)
 
         try:
@@ -231,7 +239,7 @@ def editar(maquina_id):
 
 @app.route('/deletar/<int:maquina_id>', methods=['POST'])
 @login_required
-@admin_required  # Apenas utilizadores com nível Admin podem deletar
+@admin_required
 def deletar(maquina_id):
     database.deletar_maquina(maquina_id)
     registrar_log(f"MÁQUINA EXCLUÍDA - ID: {maquina_id}")
