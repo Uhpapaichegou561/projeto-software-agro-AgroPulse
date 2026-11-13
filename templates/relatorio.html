@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}AgroTrack — Relatório{% endblock %}
+{% block title %}AgroPulse — Relatório{% endblock %}
 
 {% block content %}
 <h1>Relatório Completo da Frota</h1>
@@ -23,7 +23,6 @@
         </thead>
         <tbody>
             {% for m in maquinas %}
-
             <tr class="{% if m.alerta_manutencao %}linha-alerta{% endif %}">
                 <td>{{ m.nome }}</td>
                 <td>{{ m.tipo }}</td>
@@ -42,9 +41,11 @@
                 </td>
                 <td class="acoes">
                     <a href="{{ url_for('editar', maquina_id=m.id) }}" class="btn-editar">Editar</a>
+                    {% if session.get('nivel_acesso') == 'admin' %}
                     <form method="POST" action="{{ url_for('deletar', maquina_id=m.id) }}" onsubmit="return confirm('Tem certeza que deseja excluir esta máquina?');">
                         <button type="submit" class="btn-deletar">Excluir</button>
                     </form>
+                    {% endif %}
                 </td>
             </tr>
             {% else %}
@@ -55,4 +56,38 @@
         </tbody>
     </table>
 </div>
+
+{% if session.get('nivel_acesso') == 'admin' %}
+<h2 style="margin-top: 2rem; color: #2f5233;">🛡️ Trilha de Auditoria (Trigger AFTER DELETE)</h2>
+<div class="table-wrapper" style="margin-top: 0.8rem;">
+    <table>
+        <thead>
+            <tr>
+                <th>ID Log</th>
+                <th>Tabela Afetada</th>
+                <th>Ação</th>
+                <th>ID Registro</th>
+                <th>Detalhes</th>
+                <th>Data/Hora</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in logs %}
+            <tr>
+                <td>{{ log.id }}</td>
+                <td>{{ log.tabela_afetada }}</td>
+                <td>{{ log.acao }}</td>
+                <td>{{ log.registro_id }}</td>
+                <td>{{ log.detalhes }}</td>
+                <td>{{ log.data_hora }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="6">Nenhum evento registrado pelo gatilho até o momento.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
 {% endblock %}

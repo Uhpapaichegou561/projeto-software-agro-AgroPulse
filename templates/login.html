@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgroPulse — Acesso Seguro</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <header class="topbar">
+        <div class="logo">🌱 AgroPulse</div>
+    </header>
+
+    <main class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for categoria, msg in messages %}
+              <div style="padding: 10px 14px; margin-bottom: 14px; border-radius: 6px; background: {% if categoria == 'erro' %}#fdecea; color: #c0392b{% else %}#eaf4ea; color: #2f5233{% endif %}; font-weight: bold;">
+                {{ msg }}
+              </div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <h1>Acesso ao Sistema</h1>
+        <p class="subtitle">Autenticação obrigatória para gestão de maquinário</p>
+
+        <form method="POST" class="form-cadastro">
+            <label for="username">Usuário</label>
+            <input type="text" id="username" name="username" required autofocus>
+
+            <label for="senha">Senha</label>
+            <input type="password" id="senha" name="senha" required>
+
+            <button type="submit">Entrar no AgroPulse</button>
+        </form>
+    </main>
+</body>
+</html>

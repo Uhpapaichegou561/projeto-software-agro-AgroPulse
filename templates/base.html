@@ -3,25 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}AgroTrack{% endblock %}</title>
+    <title>{% block title %}AgroPulse{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <header class="topbar">
-        <div class="logo">🌱 AgroTrack</div>
+        <div class="logo">🌱 AgroPulse</div>
         <nav>
             <a href="{{ url_for('index') }}">Dashboard</a>
             <a href="{{ url_for('cadastrar') }}">Cadastrar Máquina</a>
             <a href="{{ url_for('relatorio') }}">Relatório</a>
+            {% if session.get('username') %}
+                <span style="margin-left: 1.5rem; font-size: 0.85rem; opacity: 0.9;">
+                    👤 {{ session.get('username') }} ({{ session.get('nivel_acesso') }})
+                </span>
+                <a href="{{ url_for('logout') }}">Sair</a>
+            {% endif %}
         </nav>
     </header>
 
     <main class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for categoria, msg in messages %}
+              <div style="padding: 10px 14px; margin-bottom: 14px; border-radius: 6px; background: {% if categoria == 'erro' %}#fdecea; color: #c0392b{% else %}#eaf4ea; color: #2f5233{% endif %}; font-weight: bold;">
+                {{ msg }}
+              </div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
         {% block content %}{% endblock %}
     </main>
 
     <footer class="footer">
-        <p>AgroTrack &mdash; Controle de custo operacional para o agronegócio</p>
+        <p>AgroPulse — Controle de custo operacional para o agronegócio</p>
     </footer>
 </body>
 </html>
